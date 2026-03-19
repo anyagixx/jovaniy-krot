@@ -40,7 +40,7 @@ Web-интерфейс для управления AmneziaWG VPN с split-tunnel
 
 ```bash
 # На чистом сервере Ubuntu 20.04/22.04
-wget https://raw.githubusercontent.com/your-repo/amnezia-vpn-manager/main/scripts/install-de.sh
+wget https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/scripts/install-de.sh
 chmod +x install-de.sh
 sudo ./install-de.sh
 ```
@@ -54,7 +54,7 @@ sudo ./install-de.sh
 
 ```bash
 # На чистом сервере Ubuntu 20.04/22.04
-wget https://raw.githubusercontent.com/your-repo/amnezia-vpn-manager/main/scripts/install-ru.sh
+wget https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/scripts/install-ru.sh
 chmod +x install-ru.sh
 sudo ./install-ru.sh
 ```
@@ -121,7 +121,7 @@ amnezia-vpn-manager/
 
 ```bash
 # Клонирование
-git clone https://github.com/your-repo/amnezia-vpn-manager.git
+git clone https://github.com/anyagixx/jovaniy-krot.git
 cd amnezia-vpn-manager
 
 # Конфигурация
