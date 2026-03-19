@@ -1,109 +1,65 @@
 #!/bin/bash
-#
-# Установка RU-сервера с Web UI
-# Запускать на чистом сервере Ubuntu 20.04/22.04
-#
-
 set -e
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 NC='\033[0m'
 
-log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
-log_step() { echo -e "${BLUE}[STEP]${NC} $1"; }
+[[ $EUID -ne 0 ]] && { echo -e "${RED}sudo required${NC}"; exit 1; }
 
-if [[ $EUID -ne 0 ]]; then
-    echo -e "${RED}Запустите с sudo${NC}"
-    exit 1
-fi
-
-echo ""
 echo "=========================================="
-echo "🚀 Установка RU-сервера AmneziaVPN"
+echo "🚀 AmneziaVPN Manager Installer"
 echo "=========================================="
-echo ""
 
-# Ввод данных DE-сервера
-read -p "IP DE-сервера: " DE_IP
-read -p "PUBKEY DE-сервера: " DE_PUBKEY
+read -p "DE Server IP: " DE_IP
+read -p "DE Server PUBKEY: " DE_PUBKEY
+[[ -z "$DE_IP" || -z "$DE_PUBKEY" ]] && { echo "Required!"; exit 1; }
 
-if [[ -z "$DE_IP" || -z "$DE_PUBKEY" ]]; then
-    echo -e "${RED}IP и PUBKEY обязательны!${NC}"
-    exit 1
-fi
-
-# Web UI настройки
-echo ""
-read -p "Логин админки [admin]: " ADMIN_USER
+read -p "Admin login [admin]: " ADMIN_USER
 ADMIN_USER=${ADMIN_USER:-admin}
-
-read -s -p "Пароль админки: " ADMIN_PASS
+read -s -p "Admin password: " ADMIN_PASS
 echo ""
-if [[ -z "$ADMIN_PASS" ]]; then
-    echo -e "${RED}Пароль обязателен!${NC}"
-    exit 1
-fi
-
-read -p "Порт админки [8080]: " WEB_PORT
+[[ -z "$ADMIN_PASS" ]] && { echo "Password required!"; exit 1; }
+read -p "Web port [8080]: " WEB_PORT
 WEB_PORT=${WEB_PORT:-8080}
 
-# ========================================
-# Установка
-# ========================================
-
-log_step "1/7 Обновление системы..."
-apt-get update -qq && apt-get upgrade -y -qq
-
-log_step "2/7 Установка зависимостей..."
-apt-get install -y -qq software-properties-common iptables iproute2 curl wget ipset qrencode \
-    python3 python3-pip python3-venv git ca-certificates gnupg
-
-log_step "3/7 Установка AmneziaWG..."
+# Install dependencies
+apt-get update -qq
+apt-get install -y -qq software-properties-common iptables curl wget ipset qrencode python3 python3-pip python3-venv
 add-apt-repository ppa:amnezia/ppa -y
 apt-get update -qq
-apt-get install -y -qq amneziawg amneziawg-tools linux-headers-$(uname -r) 2>/dev/null || \
-    apt-get install -y -qq amneziawg amneziawg-tools
+apt-get install -y -qq amneziawg amneziawg-tools 2>/dev/null || apt-get install -y -qq amneziawg amneziawg-tools
 
 echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-awg.conf
-sysctl -p /etc/sysctl.d/99-awg.conf > /dev/null
+sysctl -p /etc/sysctl.d/99-awg.conf
 
-log_step "4/7 Генерация ключей..."
+# Generate keys
 mkdir -p /etc/amnezia/amneziawg && cd /etc/amnezia/amneziawg
-
 awg genkey | tee ru_priv | awg pubkey > ru_pub
 awg genkey | tee vpn_priv | awg pubkey > vpn_pub
-
 RU_PRIV=$(cat ru_priv)
 RU_PUB=$(cat ru_pub)
 VPN_PRIV=$(cat vpn_priv)
 VPN_PUB=$(cat vpn_pub)
-
-RU_IP=$(curl -s -4 --max-time 5 ifconfig.me || curl -s -4 --max-time 5 api.ipify.org)
+RU_IP=$(curl -s -4 --max-time 5 ifconfig.me || curl -s -4 api.ipify.org)
 ETH=$(ip -4 route ls | grep default | grep -Po '(?<=dev )(\S+)' | head -1)
 
-log_step "5/7 Настройка ipset (IP России)..."
-
-cat << 'EOS' > /usr/local/bin/update_ru_ips.sh
+# ipset for RU IPs
+cat > /usr/local/bin/update_ru_ips.sh << 'EOS'
 #!/bin/bash
 ipset create ru_ips hash:net 2>/dev/null || true
 ipset flush ru_ips
 ipset add ru_ips 10.0.0.0/8 2>/dev/null || true
 ipset add ru_ips 192.168.0.0/16 2>/dev/null || true
 ipset add ru_ips 172.16.0.0/12 2>/dev/null || true
-curl -sL https://raw.githubusercontent.com/ipverse/rir-ip/master/country/ru/ipv4-aggregated.txt | \
-    grep -v '^#' | grep -E '^[0-9]' | while read line; do ipset add ru_ips $line 2>/dev/null || true; done
+curl -sL https://raw.githubusercontent.com/ipverse/rir-ip/master/country/ru/ipv4-aggregated.txt | grep -v '^#' | grep -E '^[0-9]' | while read line; do ipset add ru_ips $line 2>/dev/null || true; done
 EOS
 chmod +x /usr/local/bin/update_ru_ips.sh
 /usr/local/bin/update_ru_ips.sh
-(crontab -l 2>/dev/null | grep -v update_ru_ips; echo "0 3 * * * /usr/local/bin/update_ru_ips.sh") | crontab -
 
-log_step "6/7 Настройка VPN..."
-
-# Туннель до DE (ФИКСИРОВАННЫЕ параметры обфускации)
-cat << EOC > awg0.conf
+# DE tunnel
+cat > awg0.conf << EOF
 [Interface]
 PrivateKey = $RU_PRIV
 Address = 10.9.0.2/24
@@ -124,10 +80,10 @@ PublicKey = $DE_PUBKEY
 Endpoint = $DE_IP:51820
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
-EOC
+EOF
 
-# Сервер для клиентов
-cat << EOC > awg-client.conf
+# Client server
+cat > awg-client.conf << EOF
 [Interface]
 PrivateKey = $VPN_PRIV
 Address = 10.10.0.1/24
@@ -155,57 +111,46 @@ PostDown = ip route flush table 100 2>/dev/null || true
 PostDown = iptables -t nat -D POSTROUTING -o awg0 -j MASQUERADE 2>/dev/null || true
 PostDown = iptables -t nat -D POSTROUTING -o $ETH -j MASQUERADE 2>/dev/null || true
 PostDown = iptables -t mangle -D PREROUTING -i awg-client -m set ! --match-set ru_ips dst -j MARK --set-mark 255 2>/dev/null || true
-EOC
+EOF
 
-# Фаервол
 iptables -I INPUT -p udp --dport 51821 -j ACCEPT
 iptables -I INPUT -p tcp --dport $WEB_PORT -j ACCEPT
-ufw allow 51821/udp 2>/dev/null || true
-ufw allow $WEB_PORT/tcp 2>/dev/null || true
+systemctl enable --now awg-quick@awg0 2>/dev/null || true
+systemctl enable --now awg-quick@awg-client 2>/dev/null || true
 
-# Запуск VPN
-systemctl enable --now awg-quick@awg0
-systemctl enable --now awg-quick@awg-client
-
-log_step "7/7 Установка Web UI..."
-
+# Web UI
 INSTALL_DIR="/opt/amnezia-vpn-manager"
-mkdir -p $INSTALL_DIR/frontend && cd $INSTALL_DIR
+rm -rf $INSTALL_DIR
+mkdir -p $INSTALL_DIR/frontend
+cd $INSTALL_DIR
 
 python3 -m venv venv
 source venv/bin/activate
-pip install --upgrade pip -q
-pip install fastapi uvicorn sqlalchemy sqlmodel pydantic pydantic-settings \
-    python-multipart qrcode pillow aiofiles httpx python-jose passlib bcrypt -q
+pip install -q fastapi uvicorn sqlalchemy sqlmodel pydantic pydantic-settings python-multipart qrcode pillow aiofiles httpx python-jose passlib bcrypt
 
-# Скачивание backend файлов (все в корень, без подпапок)
-log_info "Скачивание backend..."
+# Download files
 wget -q -O main.py https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/main.py
 wget -q -O models.py https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/models.py
 wget -q -O database.py https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/database.py
 wget -q -O amneziawg.py https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/amneziawg.py
 wget -q -O routing.py https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/routing.py
 
-# Скачивание frontend файлов
-log_info "Скачивание frontend..."
 cd frontend
 wget -q -O index.html https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/frontend/index.html
 wget -q -O style.css https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/frontend/style.css
 wget -q -O app.js https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/frontend/app.js
 cd ..
 
-# Конфиг
 mkdir -p config
-cat << ENV > config/.env
+cat > config/.env << EOF
 ADMIN_USERNAME=$ADMIN_USER
 ADMIN_PASSWORD=$ADMIN_PASS
 SECRET_KEY=$(openssl rand -hex 32)
 DATABASE_URL=sqlite:///$INSTALL_DIR/vpn_manager.db
-WEB_PORT=$WEB_PORT
-ENV
+EOF
 
-# Systemd сервис
-cat << SERVICE > /etc/systemd/system/amnezia-vpn-manager.service
+# Systemd
+cat > /etc/systemd/system/amnezia-vpn-manager.service << EOF
 [Unit]
 Description=AmneziaVPN Manager
 After=network.target
@@ -219,29 +164,19 @@ Restart=always
 
 [Install]
 WantedBy=multi-user.target
-SERVICE
+EOF
 
 systemctl daemon-reload
 systemctl enable --now amnezia-vpn-manager
-
-# Ждем запуска
-sleep 3
-
-# ========================================
-# Результат
-# ========================================
+sleep 2
 
 echo ""
 echo "=========================================="
-echo -e "${GREEN}✅ RU-СЕРВЕР ГОТОВ!${NC}"
+echo -e "${GREEN}✅ DONE!${NC}"
 echo "=========================================="
+echo "Web UI: http://$RU_IP:$WEB_PORT"
+echo "Login: $ADMIN_USER"
 echo ""
-echo -e "🌐 Web UI: ${YELLOW}http://$RU_IP:$WEB_PORT${NC}"
-echo -e "👤 Логин: ${YELLOW}$ADMIN_USER${NC}"
-echo ""
-echo "=========================================="
-echo -e "${YELLOW}⚠️  ВЫПОЛНИТЕ НА DE-СЕРВЕРЕ:${NC}"
-echo ""
-echo -e "  ${GREEN}awg set awg0 peer $RU_PUB allowed-ips 10.9.0.2/32${NC}"
-echo ""
+echo "Run on DE server:"
+echo "  awg set awg0 peer $RU_PUB allowed-ips 10.9.0.2/32"
 echo "=========================================="
