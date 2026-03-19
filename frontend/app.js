@@ -269,18 +269,33 @@ async function handleDownloadConfig() {
 
 function handleCopyConfig() {
     const configEl = document.getElementById('client-config-text');
-    if (!configEl) return;
+    if (!configEl) {
+        alert('Конфиг не найден');
+        return;
+    }
     
     const config = configEl.textContent || configEl.innerText;
     
-    navigator.clipboard.writeText(config).then(() => {
+    // Создаем временный textarea для копирования
+    const textarea = document.createElement('textarea');
+    textarea.value = config;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, 99999);
+    
+    try {
+        const successful = document.execCommand('copy');
         const btn = document.getElementById('copy-config-btn');
         const originalText = btn.textContent;
-        btn.textContent = '✅ Скопировано!';
+        btn.textContent = successful ? '✅ Скопировано!' : '❌ Ошибка';
         setTimeout(() => btn.textContent = originalText, 2000);
-    }).catch(err => {
+    } catch (err) {
         alert('Ошибка копирования: ' + err);
-    });
+    }
+    
+    document.body.removeChild(textarea);
 }
 
 async function handleToggleClient() {
