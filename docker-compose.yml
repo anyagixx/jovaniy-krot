@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  vpn-manager:
+    build: .
+    container_name: amnezia-vpn-manager
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:8000"
+    volumes:
+      # Конфигурация AmneziaWG (для доступа к ключам)
+      - /etc/amnezia/amneziawg:/etc/amnezia/amneziawg:ro
+      # База данных
+      - ./data:/app/data
+      # Конфиг приложения
+      - ./config/.env:/app/.env:ro
+    environment:
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-changeme}
+      - SECRET_KEY=${SECRET_KEY:-change-this-secret-key}
+      - DATABASE_URL=sqlite:///./data/vpn_manager.db
+    # Для работы с сетью хоста (нужно для iptables/ipset)
+    # network_mode: host
+    # Или с привилегиями:
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    networks:
+      - vpn-network
+
+networks:
+  vpn-network:
+    driver: bridge
+
+# Для использования создайте файл .env:
+# ADMIN_USERNAME=admin
+# ADMIN_PASSWORD=your-secure-password
+# SECRET_KEY=your-random-secret-key
+# WEB_PORT=8080

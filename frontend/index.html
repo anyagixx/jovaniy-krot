@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AmneziaVPN Manager</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="login-screen" class="login-container">
+        <div class="login-box">
+            <div class="logo">🛡️</div>
+            <h1>AmneziaVPN Manager</h1>
+            <form id="login-form">
+                <input type="text" id="username" placeholder="Логин" required>
+                <input type="password" id="password" placeholder="Пароль" required>
+                <button type="submit">Войти</button>
+            </form>
+            <div id="login-error" class="error"></div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="dashboard" class="dashboard hidden">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <span class="logo-small">🛡️</span>
+                <h1>AmneziaVPN Manager</h1>
+            </div>
+            <div class="header-right">
+                <button id="logout-btn" class="btn-secondary">Выйти</button>
+            </div>
+        </header>
+
+        <!-- Stats Cards -->
+        <div class="stats-container">
+            <div class="stat-card">
+                <div class="stat-icon">👥</div>
+                <div class="stat-info">
+                    <div class="stat-value" id="total-clients">0</div>
+                    <div class="stat-label">Клиентов</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🟢</div>
+                <div class="stat-info">
+                    <div class="stat-value" id="active-clients">0</div>
+                    <div class="stat-label">Активных</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">⬆️</div>
+                <div class="stat-info">
+                    <div class="stat-value" id="total-upload">0 B</div>
+                    <div class="stat-label">Отправлено</div>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">⬇️</div>
+                <div class="stat-info">
+                    <div class="stat-value" id="total-download">0 B</div>
+                    <div class="stat-label">Получено</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Routing Status -->
+        <div class="routing-status">
+            <h3>🌐 Статус маршрутизации</h3>
+            <div class="routing-grid">
+                <div class="routing-item">
+                    <span class="routing-label">Туннель DE:</span>
+                    <span id="tunnel-status" class="routing-value">—</span>
+                </div>
+                <div class="routing-item">
+                    <span class="routing-label">IPset (РФ):</span>
+                    <span id="ipset-status" class="routing-value">—</span>
+                </div>
+                <div class="routing-item">
+                    <span class="routing-label">Uptime:</span>
+                    <span id="server-uptime" class="routing-value">—</span>
+                </div>
+            </div>
+            <button id="update-ips-btn" class="btn-small">Обновить IP РФ</button>
+        </div>
+
+        <!-- Clients Section -->
+        <div class="clients-section">
+            <div class="section-header">
+                <h2>📱 Клиенты VPN</h2>
+                <button id="add-client-btn" class="btn-primary">+ Добавить клиента</button>
+            </div>
+
+            <div id="clients-list" class="clients-list">
+                <!-- Clients will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Client Modal -->
+    <div id="add-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Добавить клиента</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            <form id="add-client-form">
+                <input type="text" id="client-name" placeholder="Имя клиента (например: iPhone, Laptop)" required>
+                <button type="submit" class="btn-primary">Создать</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Client Details Modal -->
+    <div id="client-modal" class="modal hidden">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2 id="client-modal-title">Детали клиента</h2>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="client-details">
+                <div class="client-qr">
+                    <img id="client-qr-img" src="" alt="QR Code">
+                    <p>Отсканируйте в приложении AmneziaWG</p>
+                </div>
+                <div class="client-config">
+                    <h3>Конфигурация</h3>
+                    <pre id="client-config-text"></pre>
+                    <div class="client-actions">
+                        <button id="download-config-btn" class="btn-secondary">📥 Скачать .conf</button>
+                        <button id="copy-config-btn" class="btn-secondary">📋 Копировать</button>
+                        <button id="toggle-client-btn" class="btn-secondary">🔄 Вкл/Выкл</button>
+                        <button id="delete-client-btn" class="btn-danger">🗑️ Удалить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
