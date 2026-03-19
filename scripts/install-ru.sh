@@ -170,7 +170,7 @@ systemctl enable --now awg-quick@awg-client
 log_step "7/7 Установка Web UI..."
 
 INSTALL_DIR="/opt/amnezia-vpn-manager"
-mkdir -p $INSTALL_DIR && cd $INSTALL_DIR
+mkdir -p $INSTALL_DIR/frontend && cd $INSTALL_DIR
 
 python3 -m venv venv
 source venv/bin/activate
@@ -178,20 +178,20 @@ pip install --upgrade pip -q
 pip install fastapi uvicorn sqlalchemy sqlmodel pydantic pydantic-settings \
     python-multipart qrcode pillow aiofiles httpx python-jose passlib bcrypt -q
 
-# Скачивание файлов с GitHub
-wget -q https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/main.py -O backend_main.py
-wget -q https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/models.py -O backend_models.py
-wget -q https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/database.py -O backend_database.py
-wget -q https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/amneziawg.py -O backend_amneziawg.py
-wget -q https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/routing.py -O backend_routing.py
+# Скачивание backend файлов (все в корень, без подпапок)
+log_info "Скачивание backend..."
+wget -q -O main.py https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/main.py
+wget -q -O models.py https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/models.py
+wget -q -O database.py https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/database.py
+wget -q -O amneziawg.py https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/amneziawg.py
+wget -q -O routing.py https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/backend/routing.py
 
-mkdir -p backend frontend
-mv backend_*.py backend/ 2>/dev/null || true
-
+# Скачивание frontend файлов
+log_info "Скачивание frontend..."
 cd frontend
-wget -q https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/frontend/index.html
-wget -q https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/frontend/style.css
-wget -q https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/frontend/app.js
+wget -q -O index.html https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/frontend/index.html
+wget -q -O style.css https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/frontend/style.css
+wget -q -O app.js https://raw.githubusercontent.com/anyagixx/jovaniy-krot/main/frontend/app.js
 cd ..
 
 # Конфиг
@@ -214,7 +214,7 @@ After=network.target
 Type=simple
 WorkingDirectory=$INSTALL_DIR
 EnvironmentFile=$INSTALL_DIR/config/.env
-ExecStart=$INSTALL_DIR/venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port $WEB_PORT
+ExecStart=$INSTALL_DIR/venv/bin/uvicorn main:app --host 0.0.0.0 --port $WEB_PORT
 Restart=always
 
 [Install]
@@ -223,6 +223,9 @@ SERVICE
 
 systemctl daemon-reload
 systemctl enable --now amnezia-vpn-manager
+
+# Ждем запуска
+sleep 3
 
 # ========================================
 # Результат

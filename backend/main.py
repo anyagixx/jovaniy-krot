@@ -1,14 +1,16 @@
 import io
-import qrcode
+import os
+from pathlib import Path
 from datetime import datetime
 from typing import List, Optional
+
+import qrcode
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session, select
-import os
 
 from database import init_db, get_db
 from models import (
@@ -26,7 +28,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 app = FastAPI(
     title="AmneziaVPN Manager",
     description="Web UI для управления AmneziaWG VPN с split-tunneling",
-    version="1.0.0"
+    version="1.0.3"
 )
 
 # CORS
@@ -58,7 +60,6 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 def on_startup():
     """Инициализация при запуске"""
     init_db()
-    # Обновляем статистику при запуске
     routing_manager.update_ru_ipset()
 
 
@@ -358,7 +359,7 @@ def restart_server(_: dict = Depends(verify_token)):
 # ==================== STATIC FILES ====================
 
 # Монтируем статику для фронтенда
-frontend_path = Path(__file__).parent.parent / "frontend"
+frontend_path = Path(__file__).parent / "frontend"
 if frontend_path.exists():
     app.mount("/static", StaticFiles(directory=str(frontend_path)), name="static")
 
