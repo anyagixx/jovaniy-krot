@@ -1,11 +1,7 @@
-// API Base URL
 const API = window.location.origin + '/api';
-
-// State
 let token = localStorage.getItem('token');
 let currentClientId = null;
 
-// Elements
 const loginScreen = document.getElementById('login-screen');
 const dashboard = document.getElementById('dashboard');
 const loginForm = document.getElementById('login-form');
@@ -18,20 +14,15 @@ const addClientForm = document.getElementById('add-client-form');
 const clientsList = document.getElementById('clients-list');
 const updateIpsBtn = document.getElementById('update-ips-btn');
 
-// Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    if (token) {
-        showDashboard();
-    }
+    if (token) showDashboard();
     
-    // Event Listeners
     loginForm.addEventListener('submit', handleLogin);
     logoutBtn.addEventListener('click', handleLogout);
     addClientBtn.addEventListener('click', () => showModal(addModal));
     addClientForm.addEventListener('submit', handleAddClient);
     updateIpsBtn.addEventListener('click', handleUpdateIps);
     
-    // Modal close buttons
     document.querySelectorAll('.modal-close').forEach(btn => {
         btn.addEventListener('click', () => {
             hideModal(addModal);
@@ -39,23 +30,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     
-    // Close modal on backdrop click
     document.querySelectorAll('.modal').forEach(modal => {
         modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                hideModal(modal);
-            }
+            if (e.target === modal) hideModal(modal);
         });
     });
     
-    // Client modal buttons
     document.getElementById('download-config-btn').addEventListener('click', handleDownloadConfig);
     document.getElementById('copy-config-btn').addEventListener('click', handleCopyConfig);
     document.getElementById('toggle-client-btn').addEventListener('click', handleToggleClient);
     document.getElementById('delete-client-btn').addEventListener('click', handleDeleteClient);
 });
 
-// Auth
 async function handleLogin(e) {
     e.preventDefault();
     const username = document.getElementById('username').value;
@@ -92,7 +78,6 @@ function showDashboard() {
     loadStats();
     loadClients();
     loadRoutingStatus();
-    // Refresh every 30 seconds
     setInterval(() => {
         loadStats();
         loadClients();
@@ -100,7 +85,6 @@ function showDashboard() {
     }, 30000);
 }
 
-// API Helper
 async function api(endpoint, options = {}) {
     const res = await fetch(`${API}${endpoint}`, {
         ...options,
@@ -123,7 +107,6 @@ async function api(endpoint, options = {}) {
     return res;
 }
 
-// Stats
 async function loadStats() {
     try {
         const res = await api('/stats');
@@ -140,7 +123,6 @@ async function loadStats() {
     }
 }
 
-// Routing Status
 async function loadRoutingStatus() {
     try {
         const res = await api('/routing/status');
@@ -176,7 +158,6 @@ async function handleUpdateIps() {
     updateIpsBtn.textContent = 'Обновить IP РФ';
 }
 
-// Clients
 async function loadClients() {
     try {
         const res = await api('/clients');
@@ -210,7 +191,6 @@ async function loadClients() {
             </div>
         `).join('');
         
-        // Add click handlers
         document.querySelectorAll('.client-item').forEach(item => {
             item.addEventListener('click', () => showClientDetails(item.dataset.id));
         });
@@ -237,7 +217,6 @@ async function handleAddClient(e) {
         loadClients();
         loadStats();
         
-        // Show the new client details
         const client = await res.json();
         showClientDetails(client.id);
     } catch (err) {
@@ -249,14 +228,12 @@ async function showClientDetails(clientId) {
     currentClientId = clientId;
     
     try {
-        // Load QR code
         const qrRes = await api(`/clients/${clientId}/qr`);
         if (!qrRes) return;
         const qrBlob = await qrRes.blob();
         const qrUrl = URL.createObjectURL(qrBlob);
         document.getElementById('client-qr-img').src = qrUrl;
         
-        // Load config
         const clients = await (await api('/clients')).json();
         const client = clients.find(c => c.id == clientId);
         
@@ -291,12 +268,18 @@ async function handleDownloadConfig() {
 }
 
 function handleCopyConfig() {
-    const config = document.getElementById('client-config-text').textContent;
+    const configEl = document.getElementById('client-config-text');
+    if (!configEl) return;
+    
+    const config = configEl.textContent || configEl.innerText;
+    
     navigator.clipboard.writeText(config).then(() => {
         const btn = document.getElementById('copy-config-btn');
         const originalText = btn.textContent;
         btn.textContent = '✅ Скопировано!';
         setTimeout(() => btn.textContent = originalText, 2000);
+    }).catch(err => {
+        alert('Ошибка копирования: ' + err);
     });
 }
 
@@ -304,9 +287,15 @@ async function handleToggleClient() {
     if (!currentClientId) return;
     
     try {
-        await api(`/clients/${currentClientId}/toggle`, {method: 'POST'});
+        const res = await api(`/clients/${currentClientId}/toggle`, {method: 'POST'});
+        if (!res) return;
+        const data = await res.json();
+        
         loadClients();
         loadStats();
+        
+        const btn = document.getElementById('toggle-client-btn');
+        btn.textContent = data.is_active ? '🔴 Выключить' : '🟢 Включить';
     } catch (err) {
         alert('Ошибка: ' + err.message);
     }
@@ -326,7 +315,6 @@ async function handleDeleteClient() {
     }
 }
 
-// Helpers
 function showModal(modal) {
     modal.classList.remove('hidden');
 }
@@ -336,7 +324,7 @@ function hideModal(modal) {
 }
 
 function formatBytes(bytes) {
-    if (bytes === 0) return '0 B';
+    if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
     const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));

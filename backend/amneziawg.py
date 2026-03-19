@@ -14,7 +14,6 @@ class AmneziaWGManager:
         self.server_interface = "awg-client"
         self.server_config = self.config_dir / f"{self.server_interface}.conf"
         
-        # Параметры обфускации по умолчанию
         self.obfuscation = {
             "jc": 120,
             "jmin": 50,
@@ -28,7 +27,7 @@ class AmneziaWGManager:
         }
     
     def generate_keypair(self) -> Tuple[str, str]:
-        """Генерация пары ключей (private, public)"""
+        """Генерация пары ключей"""
         private = subprocess.run(
             ["awg", "genkey"],
             capture_output=True, text=True, check=True
@@ -57,27 +56,24 @@ class AmneziaWGManager:
         endpoints = [
             "https://api.ipify.org",
             "https://ifconfig.me",
-            "https://api4.my-ip.io/ip"
         ]
-        for endpoint in endpoints:
+        for ep in endpoints:
             try:
-                return httpx.get(endpoint, timeout=5).text.strip()
+                return httpx.get(ep, timeout=5).text.strip()
             except Exception:
                 continue
         return None
     
     def get_next_client_ip(self) -> str:
-        """Получение следующего свободного IP для клиента"""
+        """Получение следующего свободного IP"""
         used_ips = set()
         
         if self.server_config.exists():
             content = self.server_config.read_text()
-            # Ищем все AllowedIPs в секциях [Peer]
             matches = re.findall(r'AllowedIPs\s*=\s*10\.10\.0\.(\d+)/32', content)
             for m in matches:
                 used_ips.add(int(m))
         
-        # Ищем свободный IP (начиная с 2, т.к. 1 - сервер)
         for i in range(2, 255):
             if i not in used_ips:
                 return f"10.10.0.{i}"
@@ -98,7 +94,7 @@ class AmneziaWGManager:
         if not server_pub or not endpoint:
             raise Exception("Cannot get server public key or endpoint")
         
-        config = f"""[Interface]
+        return f"""[Interface]
 PrivateKey = {private_key}
 Address = {address}/32
 DNS = 8.8.8.8, 1.1.1.1
@@ -119,31 +115,25 @@ Endpoint = {endpoint}:51821
 AllowedIPs = 0.0.0.0/0
 PersistentKeepalive = 25
 """
-        return config
     
     def add_peer(self, public_key: str, address: str) -> bool:
-        """Добавление пира в конфиг сервера"""
+        """Добавление пира"""
         try:
-            # Добавляем в конфиг файл
             peer_config = f"""
+
 [Peer]
-# Client: auto-added
 PublicKey = {public_key}
 AllowedIPs = {address}/32
 """
             with open(self.server_config, "a") as f:
                 f.write(peer_config)
             
-            # Добавляем в runtime через wg syncconf (быстрее без перезапуска)
             try:
-                # Создаем временный файл с новым пиром
-                temp_config = f"[Peer]\nPublicKey = {public_key}\nAllowedIPs = {address}/32\n"
                 subprocess.run(
                     ["awg", "set", self.server_interface, "peer", public_key, "allowed-ips", f"{address}/32"],
-                    capture_output=True, check=True
+                    capture_output=True, check=True, timeout=5
                 )
-            except subprocess.CalledProcessError:
-                # Если sync не сработал, перезапускаем сервис
+            except Exception:
                 subprocess.run(
                     ["systemctl", "restart", f"awg-quick@{self.server_interface}"],
                     capture_output=True, check=True
@@ -155,18 +145,15 @@ AllowedIPs = {address}/32
             return False
     
     def remove_peer(self, public_key: str) -> bool:
-        """Удаление пира из конфига сервера"""
+        """Удаление пира"""
         try:
-            # Удаляем из runtime
             subprocess.run(
                 ["awg", "set", self.server_interface, "peer", public_key, "remove"],
-                capture_output=True
+                capture_output=True, timeout=5
             )
             
-            # Удаляем из конфиг файла
             if self.server_config.exists():
                 content = self.server_config.read_text()
-                # Ищем и удаляем секцию пира
                 pattern = rf'\n\[Peer\]\nPublicKey\s*=\s*{re.escape(public_key)}\nAllowedIPs\s*=\s*[^\n]+\n'
                 new_content = re.sub(pattern, '', content)
                 self.server_config.write_text(new_content)
@@ -180,65 +167,45 @@ AllowedIPs = {address}/32
         """Получение статистики пиров"""
         stats = {}
         try:
-            result = subprocess.run(
-                ["awg", "show", self.server_interface, "latest-handshakes", "transfer"],
-                capture_output=True, text=True, check=True
-            )
-            
-            # Парсим вывод
-            lines = result.stdout.strip().split('\n')
-            current_peer = None
-            
-            for line in lines:
-                if line.startswith("peer:"):
-                    current_peer = line.split()[1]
-                    stats[current_peer] = {
-                        "last_handshake": None,
-                        "upload": 0,
-                        "download": 0
-                    }
-                elif "latest handshake" in line and current_peer:
-                    # Парсим время handshake
-                    pass  # Сложно парсить, пропускаем
-                elif "transfer" in line and current_peer:
-                    # Парсим transfer: XX.XXB received, XX.XXB sent
-                    match = re.search(r'([\d.]+)([KMGT]?B) received,\s*([\d.]+)([KMGT]?B) sent', line)
-                    if match:
-                        stats[current_peer]["download"] = self._parse_bytes(match.group(1), match.group(2))
-                        stats[current_peer]["upload"] = self._parse_bytes(match.group(3), match.group(4))
-            
-            # Альтернативный способ - через awg show dump
+            # Используем awg show dump для получения всех данных
             result = subprocess.run(
                 ["awg", "show", self.server_interface, "dump"],
-                capture_output=True, text=True
+                capture_output=True, text=True, timeout=10
             )
-            if result.returncode == 0:
-                for line in result.stdout.strip().split('\n')[1:]:  # Пропускаем заголовок
-                    parts = line.split('\t')
-                    if len(parts) >= 8:
-                        peer_key = parts[0]
-                        if peer_key not in stats:
-                            stats[peer_key] = {"last_handshake": None, "upload": 0, "download": 0}
-                        stats[peer_key]["upload"] = int(parts[6]) if parts[6].isdigit() else 0
-                        stats[peer_key]["download"] = int(parts[7]) if parts[7].isdigit() else 0
-                        
-                        # Handshake time
-                        handshake = int(parts[4]) if parts[4].isdigit() else 0
-                        if handshake > 0:
-                            stats[peer_key]["last_handshake"] = datetime.fromtimestamp(handshake)
             
+            if result.returncode != 0:
+                return stats
+            
+            # Парсим вывод dump
+            # Формат: private-key public-key listen-port fwmark
+            # Для каждого пира: public-key preshared-key endpoint allowed-ips latest-handshake transfer-rx transfer-tx
+            
+            lines = result.stdout.strip().split('\n')
+            if len(lines) < 2:
+                return stats
+            
+            # Первая строка - интерфейс, пропускаем
+            for line in lines[1:]:
+                parts = line.split('\t')
+                if len(parts) >= 8:
+                    peer_key = parts[0]
+                    handshake = int(parts[4]) if parts[4].isdigit() else 0
+                    rx_bytes = int(parts[5]) if parts[5].isdigit() else 0
+                    tx_bytes = int(parts[6]) if parts[6].isdigit() else 0
+                    
+                    stats[peer_key] = {
+                        "last_handshake": datetime.fromtimestamp(handshake) if handshake > 0 else None,
+                        "upload": tx_bytes,  # tx = отправлено клиентом = upload
+                        "download": rx_bytes  # rx = получено клиентом = download
+                    }
+                    
         except Exception as e:
             print(f"Error getting stats: {e}")
         
         return stats
     
-    def _parse_bytes(self, value: str, unit: str) -> int:
-        """Конвертация человекочитаемых байтов в число"""
-        multipliers = {'B': 1, 'KB': 1024, 'MB': 1024**2, 'GB': 1024**3, 'TB': 1024**4}
-        return int(float(value) * multipliers.get(unit, 1))
-    
     def is_service_running(self) -> bool:
-        """Проверка, запущен ли сервис"""
+        """Проверка статуса сервиса"""
         try:
             result = subprocess.run(
                 ["systemctl", "is-active", f"awg-quick@{self.server_interface}"],
@@ -260,5 +227,4 @@ AllowedIPs = {address}/32
             return False
 
 
-# Глобальный экземпляр
 wg_manager = AmneziaWGManager()
